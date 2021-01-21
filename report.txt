@@ -1,0 +1,36 @@
+TensorFlow 2.0 Upgrade Script
+-----------------------------
+Converted 1 files
+Detected 1 issues that require attention
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+File: PINN_H_2D.py
+--------------------------------------------------------------------------------
+PINN_H_2D.py:71:25: ERROR: Using member tf.contrib.opt.ScipyOptimizerInterface in deprecated module tf.contrib. tf.contrib.opt.ScipyOptimizerInterface cannot be converted automatically. tf.contrib will not be distributed with TensorFlow 2.0, please consider an alternative in non-contrib TensorFlow, a community-maintained repository such as tensorflow/addons, or fork the required code.
+================================================================================
+Detailed log follows:
+
+================================================================================
+--------------------------------------------------------------------------------
+Processing file 'PINN_H_2D.py'
+ outputting to 'PINN_H_2D_tf_2.py'
+--------------------------------------------------------------------------------
+
+49:20: INFO: Renamed 'tf.Session' to 'tf.compat.v1.Session'
+52:20: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+53:20: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+54:20: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+56:20: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+60:22: INFO: Added keywords to args of function 'tf.reduce_sum'
+61:22: INFO: Added keywords to args of function 'tf.reduce_sum'
+62:20: INFO: Added keywords to args of function 'tf.reduce_sum'
+71:25: ERROR: Using member tf.contrib.opt.ScipyOptimizerInterface in deprecated module tf.contrib. tf.contrib.opt.ScipyOptimizerInterface cannot be converted automatically. tf.contrib will not be distributed with TensorFlow 2.0, please consider an alternative in non-contrib TensorFlow, a community-maintained repository such as tensorflow/addons, or fork the required code.
+79:30: INFO: Renamed 'tf.train.AdamOptimizer' to 'tf.compat.v1.train.AdamOptimizer'
+82:15: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+126:14: INFO: Added keywords to args of function 'tf.gradients'
+127:14: INFO: Added keywords to args of function 'tf.gradients'
+128:14: INFO: Added keywords to args of function 'tf.gradients'
+129:15: INFO: Added keywords to args of function 'tf.gradients'
+130:15: INFO: Added keywords to args of function 'tf.gradients'
+--------------------------------------------------------------------------------
+
