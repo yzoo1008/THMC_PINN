@@ -30,7 +30,7 @@ u_graph = []
 f_graph = []
 
 class PhysicsInformedNN:
-    def __init__(self, X_u, u, X_f, layers, lb, ub, nu, Q, Val_set):
+    def __init__(self, X_u, u, X_f, layers, lb, ub, val_set):
 
         self.lb = lb
         self.ub = ub
@@ -46,19 +46,17 @@ class PhysicsInformedNN:
         self.u = u
 
         self.layers = layers
-        self.nu = nu
-        self.Q = Q
-        self.x_val = Val_set[:, 0:1]
-        self.y_val = Val_set[:, 1:2]
-        self.t_val = Val_set[:, 2:3]
-        self.u_val = Val_set[:, 3:4]
-        self.XYT_val = Val_set[:, 0:3]
+
+        self.x_val = val_set[:, 0:1]
+        self.y_val = val_set[:, 1:2]
+        self.t_val = val_set[:, 2:3]
+        self.u_val = val_set[:, 3:4]
+        
         self.n = 1
 
         self.weights, self.biases = self.initialize_NN(layers)
 
-        self.sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(allow_soft_placement=True,
-                                                     log_device_placement=True))
+        self.sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(allow_soft_placement=True, log_device_placement=True))
 
         self.x_u_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.x_u.shape[1]])
         self.y_u_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.y_u.shape[1]])
@@ -68,15 +66,13 @@ class PhysicsInformedNN:
         self.x_f_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.x_f.shape[1]])
         self.y_f_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.y_f.shape[1]])
         self.t_f_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.t_f.shape[1]])
-        self.Q_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.Q.shape[1]])
-
 
         self.u_pred = self.net_u(self.x_u_tf, self.y_u_tf, self.t_u_tf)
-        self.f_pred = self.net_f(self.x_f_tf, self.y_f_tf, self.t_f_tf, self.Q_tf)
+        self.f_pred = self.net_f(self.x_f_tf, self.y_f_tf, self.t_f_tf)
 
         # Loss
-        self.loss_u = (tf.reduce_mean(tf.square(self.u_tf - self.u_pred)))/1e10
-        self.loss_f = (tf.reduce_mean(tf.square(self.f_pred)))/1e10
+        self.loss_u = (tf.reduce_mean(tf.square(self.u_tf - self.u_pred)))
+        self.loss_f = (tf.reduce_mean(tf.square(self.f_pred)))
         self.loss = self.loss_u + self.loss_f
 
         # Validation
@@ -84,18 +80,16 @@ class PhysicsInformedNN:
         self.y_val_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.y_val.shape[1]])
         self.t_val_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.t_val.shape[1]])
         self.u_val_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.u_val.shape[1]])
-        self.XYT_val_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.XYT_val.shape[1]])
+
         self.u_val_pred = self.net_u(self.x_val_tf, self.y_val_tf, self.t_val_tf)
-        self.f_val_pred = self.net_f2(self.x_val_tf, self.y_val_tf, self.t_val_tf)
+        self.f_val_pred = self.net_f(self.x_val_tf, self.y_val_tf, self.t_val_tf)
 
         self.loss_val = tf.reduce_mean(tf.square(self.u_val_tf - self.u_val_pred))
 
-        self.opt = tf.compat.v1.train.AdamOptimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-08,
-                                                    use_locking=False, name='Adam')
+        self.opt = tf.compat.v1.train.AdamOptimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-08, use_locking=False, name='Adam')
         self.optimizer = self.opt.minimize(self.loss)
 
-        self.optimizer_Adam = tf.compat.v1.train.AdamOptimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-08,
-                                                    use_locking=False, name='Adam')
+        self.optimizer_Adam = tf.compat.v1.train.AdamOptimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-08, use_locking=False, name='Adam')
         self.train_op_Adam = self.optimizer_Adam.minimize(self.loss)
 
         # tf session
@@ -129,38 +123,34 @@ class PhysicsInformedNN:
         W = weights[-1]
         b = biases[-1]
         Y = tf.add(tf.matmul(H, W), b)
-        return 1800*Y
+        return 100*Y
 
     def net_u(self, x, y, t):
         u = self.neural_net(tf.concat([x,y,t], 1), self.weights, self.biases)
         return u
+    
+    def net_f(self, x, y, t):
+        mu = 0.001
+        Ct = 11e-9
+        phi = 0.2
+        B = 0.9
+        k = 200*9.8692*10**(-16)
 
-    def net_f(self, x, y ,t, Q):
+        nu = [k/(mu*B), 20/(24*60*60)/1000, (phi*Ct)/B]
+        
+        Q = get_Q(x, y)
+
         u = self.net_u(x, y, t)
         u_t = tf.gradients(u, t)[0]
         u_x = tf.gradients(u, x)[0]
         u_y = tf.gradients(u, y)[0]
-        u_x = self.nu[0] * u_x
-        u_y = self.nu[0] * u_y
+        u_x = nu[0] * u_x
+        u_y = nu[0] * u_y
         u_xx = tf.gradients(u_x, x)[0]
         u_yy = tf.gradients(u_y, y)[0]
 
-        f = u_xx + u_yy + Q * self.nu[1]  - self.nu[2] * u_t
-        return f*650000000000*10
-
-    def net_f2(self, x, y, t):
-        Q = step_function(x,y)
-        u = self.net_u(x, y, t)
-        u_t = tf.gradients(u, t)[0]
-        u_x = tf.gradients(u, x)[0]
-        u_y = tf.gradients(u, y)[0]
-        u_x = self.nu[0] * u_x
-        u_y = self.nu[0] * u_y
-        u_xx = tf.gradients(u_x, x)[0]
-        u_yy = tf.gradients(u_y, y)[0]
-
-        f = u_xx + u_yy + Q * self.nu[1] - self.nu[2] * u_t
-        return f*650000000000*10
+        f = u_xx + u_yy + Q * nu[1] - nu[2] * u_t
+        return f*65E11
 
     def callback(self, loss, loss_val, loss_u, loss_f):
         print('It: %d, Loss: %e, Loss_val: %e' % (self.n, loss, loss_val))
@@ -173,8 +163,8 @@ class PhysicsInformedNN:
     def train(self,nIter):
 
         tf_dict = {self.x_u_tf: self.x_u, self.y_u_tf: self.y_u, self.t_u_tf: self.t_u, self.u_tf: self.u,
-                   self.x_f_tf: self.x_f, self.y_f_tf: self.y_f, self.t_f_tf: self.t_f,self.x_val_tf: self.x_val, self.y_val_tf: self.y_val, self.t_val_tf: self.t_val,
-                   self.u_val_tf: self.u_val,self.Q_tf: self.Q}
+                   self.x_f_tf: self.x_f, self.y_f_tf: self.y_f, self.t_f_tf: self.t_f,
+                   self.x_val_tf: self.x_val, self.y_val_tf: self.y_val, self.t_val_tf: self.t_val, self.u_val_tf: self.u_val}
 
         start_time = time.time()
         for it in range(nIter):
@@ -191,12 +181,11 @@ class PhysicsInformedNN:
                 val_graph.append([it, val_loss])
                 u_graph.append([it, u_loss])
                 f_graph.append([it, f_loss])
-                print('It: %d, Loss: %.3e, Loss_val: %.3e, Loss_u: %.3e,Loss_f: %.3e, Time: %.2f' %
-                      (it, loss_value, val_loss,u_loss,f_loss, elapsed))
+                print('It: %d, Loss: %.3e, Loss_val: %.3e, Loss_u: %.3e,Loss_f: %.3e, Time: %.2f' %(it, loss_value, val_loss,u_loss,f_loss, elapsed))
 
-    def predict(self, X_star, Q):
+    def predict(self, X_star):
         u_star = self.sess.run(self.u_pred, {self.x_u_tf: X_star[:, 0:1], self.y_u_tf: X_star[:, 1:2], self.t_u_tf: X_star[:, 2:3]})
-        f_star = self.sess.run(self.f_pred, {self.x_f_tf: X_star[:, 0:1], self.y_f_tf: X_star[:, 1:2], self.t_f_tf: X_star[:, 2:3], self.Q_tf: Q[:, 0:1]})
+        f_star = self.sess.run(self.f_pred, {self.x_f_tf: X_star[:, 0:1], self.y_f_tf: X_star[:, 1:2], self.t_f_tf: X_star[:, 2:3]})
 
         return u_star, f_star
 
@@ -250,91 +239,59 @@ def savefig(filename, crop = True):
         plt.savefig('{}.pdf'.format(filename))
         plt.savefig('{}.eps'.format(filename))
 
-def step_function(x,y):
+def get_Q(x,y):
     s1 = np.array(((x == 5) & (y == 5)), dtype=np.int)
     s2 = np.array(((x == 65) & (y == 65)), dtype=np.int)
     Q = s1-s2
     return Q
 
 if __name__ == "__main__":
-    mu = 0.001
-    Ct = 101e-9
-    phi = 0.2
-    B = 0.9
-    k = 200*9.8692*10**(-16)
-
-    nu = [k/mu/B, 200/3600/24/1000, phi*Ct/B] #1000 = A * dx
-    noise = 0.0
-
     layers = [3, 49*10, 1]
 
     data = scipy.io.loadmat('./Data/pressure.mat')
 
-    t = np.arange(0,30*60*4,30*60)
+    t = np.arange(0, 30*60*4, 30*60)
     t = np.reshape(t, [-1, 1])
-    x = data['x'].flatten()[:, None]
-    y = data['y'].flatten()[:, None]
-    Exact = np.real(data['usol']).T
-    Exact = Exact*1000 # make it kPa 에다가 10으로 더 나눠줌. 즉, 총 10000 으로 나누어줌 그래서 nu[1]도 나누어줌.
-
+    x = data['x']  # [[1], [2], [3], ..., [n_x]]
+    y = data['y']  # [[1], [2], [3], ..., [n_y]]
+    
+    Exact = data['usol'].T # [[P1, ..., Pn_x*n_y]_t0, ..., [P1, Pn_x*n_y]_tn] 
+    Exact = Exact*1000 # kPa--> Pa
+    
     n_t = np.shape(t)[0]
     n_x = 7
     n_y = 7
     X, Y, T = np.meshgrid(x, y, t)
 
-    X_star = np.hstack((np.tile(x,(n_x*n_t,1)).flatten()[:,None],(np.tile(y,(n_t,n_y))).flatten()[:, None],sorted(T.flatten()[:, None])))
+    X_star = np.hstack((np.tile(x, (n_x*n_t,1)).flatten()[:,None],(np.tile(y,(n_t,n_y))).flatten()[:, None],sorted(T.flatten()[:, None])))
     u_star = Exact.flatten()[:, None]
-
-    # Doman bounds
+    
     lb = X_star.min(0)
     ub = X_star.max(0)
-
-#Boundary condition and initial condition
-
-    # xx1 = np.hstack((np.tile(x,(40,10)).flatten()[:, None],np.tile(y,(1,400)).flatten()[:, None], np.tile(t[0:10],(1600,1)).flatten()[:, None])) #초기 10개의 시간에 대한 모든 좌표에서의 압력값
-    # uu1 = (Exact[0:10, :].T).flatten()[:, None] #  u(x,0)
-
-    # xx1 = np.hstack((np.tile(x, (40, 20)).flatten()[:, None], np.tile(y, (1, 800)).flatten()[:, None],np.tile(t[0:20], (1600, 1)).flatten()[:, None]))  # 초기 20개의 시간에 대한 모든 좌표에서의 압력값
-    # uu1 = (Exact[0:20, :].T).flatten()[:, None]  # u(x,0)
-    # xx1 = np.hstack((np.tile(x, (40, 30)).flatten()[:, None], np.tile(y, (1, 1200)).flatten()[:, None],np.tile(t[0:30], (1600, 1)).flatten()[:, None]))  # 초기 30개의 시간에 대한 모든 좌표에서의 압력값
-    # uu1 = (Exact[0:30, :].T).flatten()[:, None]  # u(x,0)
-    # xx1 = np.hstack((np.tile(x, (40, 50)).flatten()[:, None], np.tile(y, (1, 2000)).flatten()[:, None],np.tile(t[0:50], (1600, 1)).flatten()[:, None]))  # 초기 50개의 시간에 대한 모든 좌표에서의 압력값
-    # uu1 = (Exact[0:50, :].T).flatten()[:, None]  # u(x,0)
+    
+    ### 초기 조건
+    # t_0의 전좌표에서의 압력 값
     xx1 = np.hstack((np.tile(x, (n_x, 1)).flatten()[:, None], np.tile(y, (1, n_y)).flatten()[:, None],np.tile(t[0:1], (n_x*n_y, 1)).flatten()[:, None]))  # 초기 1개의 시간에 대한 모든 좌표에서의 압력값
     uu1 = (Exact[0:1, :].T).flatten()[:, None]
+    # t_1의 전좌표에서의 압력 값
     xx2 = np.hstack((np.tile(x, (n_x, 1)).flatten()[:, None], np.tile(y, (1, n_y)).flatten()[:, None],np.tile(t[1:2], (n_x*n_y, 1)).flatten()[:, None]))  # 초기 1개의 시간에 대한 모든 좌표에서의 압력값
     uu2 = (Exact[1:2, :].T).flatten()[:, None]
-    # u(x,0)
 
-
+    ### 경계조건 2
+    # u(0, 0, t)의 좌표와 압력값이 xx7 & uu7 (Inject Point)
+    xx7 = np.hstack((np.tile(x[0],(1,n_t)).flatten()[:, None], np.tile(y[0],(1,n_t)).flatten()[:, None], t[0:n_t].flatten()[:, None]))
+    uu7 = (Exact[0:n_t, 0:1].T).flatten()[:, None]
+    # u(n_x, n_y, t)의 좌표와 압력값이 xx8 & uu8 (Produce Point)
+    xx8 = np.hstack((np.tile(x[n_x-1],(1,n_t)).flatten()[:, None], np.tile(y[n_y-1],(1,n_t)).flatten()[:, None], t[0:n_t].flatten()[:, None]))
+    uu8 = (Exact[0:n_t, -1:].T).flatten()[:, None] #u(end,end,t)
 
     N_u = n_x*n_y*1
     N_f = n_x*n_y*150
-    # error_table_1 = np.zeros((len(N_u), len(N_f)))
-
-
+    
     X_u_train = np.vstack([xx1])
-
-
     X_f_train = X_star[:, :]
-
-
     u_train = np.vstack([uu1])
-    Q = step_function(X_f_train[:, 0:1],X_f_train[:, 1:2])
 
-
-    ################################### 경계조건을 주가해보자., 일부 앞부분만!
-    xx7 = np.hstack((np.tile(x[0],(1,n_t)).flatten()[:, None], np.tile(y[0],(1,n_t)).flatten()[:, None], t[0:n_t].flatten()[:, None])) #
-    uu7 = (Exact[0:n_t, 0:1].T).flatten()[:, None] #u(0,0,t)  여기서 inject
-    # # #
-    xx8 = np.hstack((np.tile(x[n_x-1],(1,n_t)).flatten()[:, None], np.tile(y[n_y-1],(1,n_t)).flatten()[:, None], t[0:n_t].flatten()[:, None]))
-    uu8 = (Exact[0:n_t, -1:].T).flatten()[:, None] #u(end,end,t)  여기서 produce
-    #
-    # idx = np.random.choice(xx7.shape[0], n_t-1, replace=False)
-    # xx7 = xx7[idx, :]
-    # xx8 = xx8[idx, :]
-    # uu7 = uu7[idx, :]
-    # uu8 = uu8[idx, :]
 
     ### training data validation data 8:2
     idx = np.random.choice(X_u_train.shape[0], N_u, replace=False)
@@ -347,45 +304,21 @@ if __name__ == "__main__":
 
     X_u_train = X_u_train[idx_train, :]
     u_train = u_train[idx_train, :]
-    Val_set = np.hstack([X_u_val, u_val])
 
-    # X_u_train = np.vstack([X_u_train, xx7, xx8])
-    # u_train = np.vstack([u_train, uu7, uu8])
+    val_set = np.hstack([X_u_val, u_val])
 
-    # X_u_train = np.vstack([xx1, xx2])
-    # u_train = np.vstack([uu1,uu2])
     X_u_train = np.vstack([xx1, xx7,xx8])
     u_train = np.vstack([uu1,uu7,uu8])
 
-    # idx_f = np.random.choice(X_f_train.shape[0], N_f, replace=False)
-    # X_f_train = X_f_train[idx_f, :]
-    # Q2 = step_function(X_f_train[:, 0:1],X_f_train[:, 1:2])
 
-    ######################################
-    ################################### 경계조건을 주가해보자.,
-    # xx7 = np.hstack((X[:, 0:1], T[:, 0:1]))  #
-    # uu7 = Exact[:, 0:1]  # u(0,t)  여기서 inject
-    #
-    # xx8 = np.hstack((X[:, -1:], T[:, -1:]))
-    # uu8 = Exact[:, -1:]  # u(end,t)  여기서 produce
-    #
-    # idx = np.random.choice(xx7.shape[0], 10, replace=False)
-    # idy = np.random.choice(xx8.shape[0], 10, replace=False)
-    # X_u_train = np.vstack([X_u_train, xx7[idx, :], xx8[idy, :]])
-    # u_train = np.vstack([u_train, uu7[idx, :], uu8[idy, :]])
-    #############################
+    model = PhysicsInformedNN(X_u_train, u_train, X_f_train, layers, lb, ub, val_set)
 
-
-
-
-    # model = PhysicsInformedNN(X_u_train, u_train, X_f_train, layers, lb, ub, nu, Q2, Val_set)
-    model = PhysicsInformedNN(X_u_train, u_train, X_f_train, layers, lb, ub, nu, Q, Val_set)
     start_time = time.time()
-    model.train(70000)
+    model.train(100000)
     elapsed = time.time() - start_time
     print('Training time: %.4f' % (elapsed))
 
-    u_pred, f_pred = model.predict(X_star, Q)
+    u_pred, f_pred = model.predict(X_star)
 
     # error_u_norm = np.linalg.norm(u_star - u_pred, 2) / np.linalg.norm(u_star, 2)
     # error_u = np.linalg.norm(u_star - u_pred, 2)
@@ -394,56 +327,10 @@ if __name__ == "__main__":
     # print('Error u: %e' % (error_u))
     # print('f_pred: %e' % (error_f))
 
-
-
-    ######################################################################
-    ############################# Plotting ###############################
-    ######################################################################
-    # lb = X_star.min(0)
-    # ub = X_star.max(0)
-    # nn = 40
-    # x = np.linspace(lb[0], ub[0], nn)
-    # y = np.linspace(lb[1], ub[1], nn)
-    # X, Y = np.meshgrid(x, y)
-    # U_pred = griddata(X_star[:, 0:2], u_pred.flatten(), (X, Y), method='cubic')
-    # fig, ax = newfig(1.015, 0.8)
-    # ax.axis('off')
-    # ######## Row 2: Pressure #######################
-    # ########      Predicted p(t,x,y)     ###########
-    # gs2 = gridspec.GridSpec(1, 2)
-    # gs2.update(top=1, bottom=1 - 1 / 2, left=0.1, right=0.9, wspace=0.5)
-    # ax = plt.subplot(gs2[:, 0])
-    # h = ax.imshow(U_pred, interpolation='nearest', cmap='rainbow',
-    #               extent=[lb[0], ub[0], lb[1], ub[1]],
-    #               origin='lower', aspect='auto')
-    # divider = make_axes_locatable(ax)
-    # cax = divider.append_axes("right", size="5%", pad=0.05)
-    #
-    # fig.colorbar(h, cax=cax)
-    # ax.set_xlabel('$x$')
-    # ax.set_ylabel('$y$')
-    # ax.set_aspect('equal', 'box')
-    # ax.set_title('Predicted pressure', fontsize=10)
-    #
-    # ########     Exact p(t,x,y)     ###########
-    # U_star = griddata(X_star[:, 0:2], u_star.flatten(), (X, Y), method='cubic')
-    # ax = plt.subplot(gs2[:, 1])
-    # h = ax.imshow(U_star, interpolation='nearest', cmap='rainbow',
-    #               extent=[lb[0], ub[0], lb[1], ub[1]],
-    #               origin='lower', aspect='auto')
-    # divider = make_axes_locatable(ax)
-    # cax = divider.append_axes("right", size="5%", pad=0.05)
-    #plt.show()
-
-
-# error_table_1[i, j] = error_u  # 위쪽으로 옮겨놨음
-# np.savetxt('./tables/error_table_1.csv', error_table_1, delimiter=' & ', fmt='$%.2e$', newline=' \\\\\n')
-    plt.figure()
-    plot_solution(X_star[(n_x*n_y*(n_t-1)):,0:2],(u_pred[(n_x*n_y*(n_t-1)):])/1000,3,'Predicted Pressure') #predicted figure
-    plt.figure()
-    plot_solution(X_star[(n_x*n_y*(n_t-1)):,0:2],(u_star[(n_x*n_y*(n_t-1)):(n_x*n_y*n_t)])/1000,2,'True Pressure') #true figure
-
-
+    ### PLOT the Results
+    plot_solution(X_star[(n_x*n_y*(n_t-1)):,0:2], (u_pred[(n_x*n_y*(n_t-1)):])/1000, 0, 'Predicted Pressure') # Predicted
+    plot_solution(X_star[(n_x*n_y*(n_t-1)):,0:2], (u_star[(n_x*n_y*(n_t-1)):(n_x*n_y*n_t)])/1000, 1, 'True Pressure') # True
+    
     plt.figure()
     plt.title('validation error', fontsize=12)
     val_np = np.array(val_graph)
@@ -470,3 +357,5 @@ if __name__ == "__main__":
     plt.ylabel('Physics based Loss', fontsize=10)
     # plt.show(block=False)
     plt.show()
+
+
